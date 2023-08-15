@@ -12,6 +12,66 @@ session_cookie_name = 'ses_id'
 def hello_world():
     return 'Hello, World!'
 
+
+def session_login_middleware(view_function):
+    def wrapper(*args, **kwargs):
+        session_id_user_request  = request.cookies.get(session_cookie_name)
+        if session_id_user_request is not None and session_id_user_request != '':
+            ses_db = db.session.query(LoginSession).filter_by(id=session_id_user_request).first()
+            if ses_db and ses_db.expired_at < datetime.now():
+                return jsonify({'message' : 'your session is expired'}),401
+            elif ses_db is None:
+                return jsonify({'message' : 'you are not logged in'}),401
+        else :
+            return jsonify({'message' : 'you are not logged in'}),401
+        return view_function(*args, **kwargs)
+    wrapper.__name__ = view_function.__name__
+    return wrapper
+
+def session_extension_middleware(view_function):
+    def wrapper(*args,**kwargs):
+        session_id_user_request  = request.cookies.get(session_cookie_name)
+        if session_id_user_request is not None and session_id_user_request != '':
+            ses_db = db.session.query(LoginSession).filter_by(id=session_id_user_request).first()
+            ses_db.expired_at = datetime.now()+timedelta(minutes=expiry_time_minutes)
+            db.session.commit()
+            response = make_response()
+            # Set a new cookie
+            response.set_cookie(session_cookie_name, str(ses_db.id), max_age=3600,httponly=True,samesite='Strict')
+            return response
+        return view_function(*args,**kwargs)
+    wrapper.__name__ = view_function.__name__
+    return wrapper
+
+
+
+@app.route('/dogs',methods=['GET'])
+@session_login_middleware
+@session_extension_middleware
+def get_dogs(): 
+    return {
+        "dog" : "woof"
+    }
+
+@app.route('/cats',methods=['GET'])
+@session_login_middleware
+def get_cats():
+    return {
+        "cat" : "meow"
+    }
+
+
+@app.route('/logout',methods=['POST'])
+def logout():
+    session_id_user_request  = request.cookies.get(session_cookie_name)
+    if session_id_user_request is not None and session_id_user_request != '':
+        ses_db = db.session.query(LoginSession).filter_by(id=session_id_user_request).first()
+        ses_db.expired_at = datetime.now() + timedelta(minutes=-1)
+        db.session.commit()
+    response = make_response({"message":"logged out !"})
+    response.delete_cookie(session_cookie_name)
+    return response
+
 @app.route('/login',methods=['POST'])
 def login_flow():
     try:
@@ -40,7 +100,7 @@ def login_flow():
             return jsonify({'message' : 'Unauthorized'}),401
 
         # create a login session
-        log_session = LoginSession(user_id = user.id,created_at = datetime.now(),expired_at = datetime.now()+timedelta(expiry_time_minutes))
+        log_session = LoginSession(user_id = user.id,created_at = datetime.now(),expired_at = datetime.now()+timedelta(minutes=expiry_time_minutes))
         db.session.add(log_session)
         db.session.commit()
 
