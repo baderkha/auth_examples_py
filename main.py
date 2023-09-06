@@ -1,7 +1,11 @@
 from datetime import datetime,timedelta
 from flask import Flask, request, jsonify,make_response,session
 from user import User
+from permissions import Permission
+from role_permission import RolePermissions
+from roles import Roles
 from session import LoginSession
+from sqlalchemy.sql import text
 from app_setup import app, db
 import jwt
 
@@ -11,34 +15,41 @@ jwt_cookie_name = "jwt_cookie"
 issuer = "rakan-secret-incorportated.com"
 token_secret = "someone_cool_123"
 
+
+def get_user_permissions(user_id):
+    sqlStmt = text('''
+    SELECT
+    p.permission_description as permission_description,
+    p.permission_id as permission_id
+FROM
+    PERMISSIONS AS p
+JOIN
+    ROLE_PERMISSIONS AS rp ON p.permission_id = rp.permission_id
+JOIN
+   USERS AS u on u.role_id = rp.role_id 
+and 
+	u.id =:user_id_arg
+''')
+    res = db.session.query(Permission).from_statement(sqlStmt).params(user_id_arg = user_id).all()
+    return res
+
+def does_permission_exist(permission_list,permission_name):
+    for perm in permission_list:
+        if perm.permission_id == permission_name:
+            return True
+    return False
+
 @app.route('/')
 def hello_world():
-    return 'Hello, World!'
-
-    # status codes to remember
-    # success
-    # 200 -> ok (get update delete)
-    # 201 -> created (create post)
-    # 202 -> your request has been accepeted and you need to use another route to poll for status
+   permissions_for_user = get_user_permissions(1)
+   return jsonify(does_permission_exist(permissions_for_user,'s'))
 
 
-    # informational status
-    # 301 -> redirecting user
-
-    # failure (by client) (nothing wrong with your code something wrong with theirs)
-    # 400 -> users request is missing some stuff or is invalid
-    # 401 -> unauthorized access
-    # 404 -> not found (they made a request to a resource that does not exist)
-    # 403 -> forebidden (they are authroized in the system but they;re accessing a resource that is not theirs)
-    # 419 -> rate limit (you hit the route too many times and you should cool down)
-    # 418 -> i'm a teapot
-
-
-    # failure (by server)
-
-    # 500 -> server failed for generic reason
-    # 501 -> not implemented
-
+def map_permissions(permissionObj):
+    return {
+        "permission_id" : permissionObj.permission_id,
+        "permission_description" : permissionObj.permission_description
+    }
 
 
 def jwt_login_verify(view_function):
@@ -237,9 +248,7 @@ def login_flow_session():
 if __name__ == '__main__':
     with app.app_context():
         db.create_all()
-        new_user = User(email='john_doe', password='john@example.com')
-        db.session.add(new_user)
-        db.session.commit()
+        
     app.secret_key = 'super secret key'
     app.config['SESSION_TYPE'] = 'filesystem'
     

@@ -3,12 +3,10 @@ from sqlalchemy import  Column, Integer, String
 from app_setup import db
 
 # Define the model class
-class User(db.Model):
-    __tablename__ = 'users'
-
+class RolePermissions(db.Model):
+    __tablename__ = 'role_permissions'
     id = Column(Integer, primary_key=True)
-    email = Column(String)
-    password = Column(String)
-    role_id= Column(String)
+    permission_id = Column(String)
+    role_id = Column(String)
 
 
